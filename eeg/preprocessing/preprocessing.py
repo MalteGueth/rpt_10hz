@@ -50,18 +50,9 @@ epochs = mne.Epochs(raw2, events=events, event_id=event_id).average().plot()
 filter_raw.info['bads'] = []
 filter_raw = filter_raw.interpolate_bads(reset_bads=True)
 
-# Check the raw data and note the end of the practice
-filter_raw.plot()
-# Crop out the practice by making its start the end of the break
-filter_raw_cropped = filter_raw.crop(tmin=200)
-
-# Re-write the events
-events = mne.events_from_annotations(filter_raw_cropped)[0]
-mne.write_events(path + 'events/' + sub + '-eve.fif', events, overwrite=True)
-
 # Identify breaks and 10-Hz stimulation periods
 # by marking sections without event markers for at least min_break_duration
-breaks = mne.preprocessing.annotate_break(raw=filter_raw_cropped, events=events, min_break_duration=4.7,
+breaks = mne.preprocessing.annotate_break(raw=filter_raw, events=events, min_break_duration=4.7,
                                           t_stop_before_next=0, t_start_after_previous=0)
 # Move the onset of the break 100 ms back
 breaks.onset = breaks.onset - 0.1
@@ -69,8 +60,8 @@ breaks.onset = breaks.onset - 0.1
 breaks.duration = breaks.duration + 0.1
 
 # Set the annotations and check if it looks right
-filter_raw_cropped.set_annotations(breaks)
-filter_raw_cropped.plot(events=events)
+filter_raw.set_annotations(breaks)
+filter_raw.plot(events=events)
 # Uncomment code below to fix breaks if for example sections marked are too long
 # long_breaks = np.where(breaks.duration > max_length)
 # breaks.delete(long_breaks)
@@ -85,16 +76,16 @@ ica = ICA(n_components=n_components, method=method)
 
 # Apply stricter high-pass filter at 1 Hz to copy of raw data to be fed into ICA
 # to reduce influence of slow drifts and other high amplitude low frequency artifacts
-ica.fit(filter_raw_cropped.copy().filter(l_freq=1, h_freq=60), reject_by_annotation=True)
+ica.fit(filter_raw.copy().filter(l_freq=1, h_freq=60), reject_by_annotation=True)
 
 # Save ICA
 ica.save(path + 'ica/sub' + sub + '-ica.fif', overwrite=True)
 
 # Plot all ica components as topomaps and their respective time course contributions
 ica.plot_components()
-ica.plot_sources(filter_raw_cropped, start=100);
+ica.plot_sources(filter_raw, start=100);
 # To be sure, we can look at exact properties of these components
-ica.plot_properties(filter_raw_cropped, picks=[])
+ica.plot_properties(filter_raw, picks=[])
 
 # Select components to be excluded from back-projection to continuous data
 bads = []
@@ -106,12 +97,12 @@ ica.exclude = eog_indices
 
 # Plot the component artifact scores along with component properties and averaged raw data around EOG events with the best matching component excluded
 ica.plot_scores(eog_scores);
-ica.plot_properties(filter_raw_cropped, picks=eog_indices);
-ica.plot_sources(filter_raw_cropped, start=100);
+ica.plot_properties(filter_raw, picks=eog_indices);
+ica.plot_sources(filter_raw, start=100);
 ica.plot_sources(eog_epochs.average());
 
 # Back-project to continous data without artifact components
-reconst_raw = filter_raw_cropped.copy()
+reconst_raw = filter_raw.copy()
 ica.apply(reconst_raw)
 
 # The same procedure can be applied using an automatic detection ICA-approach
@@ -121,7 +112,36 @@ ica.exclude = []
 # Rereference to the cleaned mastoids
 reconst_raw.set_eeg_reference(ref_channels=['M1', 'M2'])
 
-# Segment cleaned data round events and extract -2.5 to 2.5 seconds for time frequency analysis
+# Before segmentation check the cleaned data,
+# note the timings of breaks, and add a break marker
+# This is necessary due to the variable length of breaks
+reconst_raw.plot()
+practice = 83*reconst_raw['sfreq'], 267*reconst_raw['sfreq']
+bl1 = 267*reconst_raw['sfreq'], 752*reconst_raw['sfreq']
+bl2 = 798*reconst_raw['sfreq'], 1278*reconst_raw['sfreq']
+bl3 = 1399*reconst_raw['sfreq'], 1879*reconst_raw['sfreq']
+bl4 = 1917*reconst_raw['sfreq'], 2397*reconst_raw['sfreq']
+
+# Create the new lines
+practice_start = np.array([practice[0], 0, 101])
+practice_end = np.array([practice[1], 0, 102])
+bl1_start = np.array([bl1[0], 0, 101])
+bl1_end = np.array([bl1[1], 0, 102])
+bl2_start = np.array([bl2[0], 0, 201])
+bl2_end = np.array([bl2[1], 0, 202])
+bl3_start = np.array([bl3[0], 0, 301])
+bl3_end = np.array([bl3[1], 0, 302])
+bl4_start = np.array([bl4[0], 0, 401])
+bl4_end = np.array([bl4[1], 0, 402])
+
+# Enter the new events and sort by timing column
+events = np.sort(np.vstack([events, practice_start, practice_end, bl1_start, bl1_end, 
+                            bl2_start, bl2_end, bl3_start, bl3_end, bl4_start, bl4_end]), axis=0)
+# Re-write event array
+mne.write_events(path + 'events/' + sub + '-eve.fif', events)
+
+# Do a quick segmentation on the cleaned data around events and extract -2.5 to 2.5 seconds for time frequency analysis
+# This is just to check if the epochs are clean enough
 epochs = mne.Epochs(reconst_raw, events, event_id, tmin=-2.5, tmax=2.5, baseline=None, preload=True, on_missing='ignore')
 
 # Reject artifact epochs by first setting ampltiude criteria
@@ -134,4 +154,3 @@ epochs.plot_drop_log()
 
 # Save data
 reconst_raw.save(path + 'raw/sub' + sub + '-raw.fif', overwrite=True)
-epochs.save(path + 'epochs/sub' + sub + '-epo.fif', overwrite=True)
