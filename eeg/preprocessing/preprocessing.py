@@ -5,6 +5,9 @@ import os
 import mne
 from mne.preprocessing import ICA
 
+# Data managament
+import numpy as np
+
 # Set the root path
 path = 'file_directory/'
 # Set the directory and file name
@@ -26,16 +29,17 @@ raw.set_channel_types({'LHEOG': 'eog', 'RHEOG': 'eog', 'VEOG': 'eog'})
 raw.plot_sensors(kind='topomap', show_names=True, title='26 channel EEG montage');
 
 # Read EEG events from raw file annotations
-events, event_dict = mne.events_from_annotations(raw)
+events, _ = mne.events_from_annotations(raw)
 
-# Build a new dictionary of event ids
+# Build a dictionary of event ids
 event_id = {'left_reward': 6, 'left_noreward': 7, 'right_reward': 8, 'right_noreward': 9}
 
 # Plot all events across time
 fig = mne.viz.plot_events(events, raw.info['sfreq'],
                           event_id=event_id, first_samp=raw.first_samp)
 
-# Save event array
+# Save event array and account for pre-release
+events[:,0] = events[:,0] + 100
 mne.write_events(path + 'events/' + sub + '-eve.fif', events)
 
 # Bandpass filter data between 0.1 Hz and 60 Hz
@@ -123,8 +127,8 @@ bl3 = 1399*reconst_raw['sfreq'], 1879*reconst_raw['sfreq']
 bl4 = 1917*reconst_raw['sfreq'], 2397*reconst_raw['sfreq']
 
 # Create the new lines
-practice_start = np.array([practice[0], 0, 101])
-practice_end = np.array([practice[1], 0, 102])
+practice_start = np.array([practice[0], 0, 901])
+practice_end = np.array([practice[1], 0, 902])
 bl1_start = np.array([bl1[0], 0, 101])
 bl1_end = np.array([bl1[1], 0, 102])
 bl2_start = np.array([bl2[0], 0, 201])
